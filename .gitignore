@@ -1,0 +1,4 @@
+Training/
+Testing/
+tumor_model.h5
+__pycache__/
