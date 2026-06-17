@@ -244,7 +244,7 @@ if uploaded_file is not None:
                 st.warning(f"⚠️ {predicted_class} Detected")
 
             if confidence < 60:
-                st.error("🔴 Low Confidence — Consult radiologist")
+                st.error("🔴 Low Confidence - Consult radiologist")
             elif confidence < 80:
                 st.warning("🟡 Medium Confidence")
             else:
@@ -280,6 +280,30 @@ if uploaded_file is not None:
             st.progress(int(prob))
 
     st.markdown("---")
+    # PDF Report download
+    st.markdown("---")
+    st.markdown("### 📄 Download Report")
+    
+    if st.button("Generate PDF Report", type="primary"):
+        with st.spinner("Generating report..."):
+            import importlib
+            import report
+            importlib.reload(report)
+            from report import generate_pdf_report
+            heatmap_overlay = overlay_gradcam(image, heatmap) if heatmap is not None else None
+            pdf_path = generate_pdf_report(
+                image, predicted_class, confidence,
+                predictions, CLASS_NAMES, heatmap_overlay
+            )
+            with open(pdf_path, 'rb') as f:
+                pdf_bytes = f.read()
+            st.download_button(
+                label="Download PDF Report",
+                data=pdf_bytes,
+                file_name="NeuraSight_Report.pdf",
+                mime="application/pdf"
+            )
+            st.success("Report generated!")
 
     # Disclaimer
     st.markdown("""
