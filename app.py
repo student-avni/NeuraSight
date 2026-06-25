@@ -116,6 +116,24 @@ CLASS_INFO = {
     }
 }
 
+# Helper Function to generate the smart summary for two scans
+def get_comparison_summary(class1, conf1, class2, conf2):
+    if class1 != 'No Tumor' and class2 == 'No Tumor':
+        return "Tumor appears to be gone — positive response to treatment!"
+    elif class1 == 'No Tumor' and class2 != 'No Tumor':
+        return f"New tumor detected ({class2}) in the second scan. Immediate review required."
+    elif class1 == class2 and class1 != 'No Tumor':
+        if conf2 < (conf1 - 5):
+            return f"Tumor still present ({class2}), but AI confidence has reduced. This may indicate a positive response to treatment."
+        elif conf2 > (conf1 + 5):
+            return f"Tumor still present ({class2}), and AI confidence has increased. Careful medical review required."
+        else:
+            return f"No significant change detected. Both scans show {class1}."
+    elif class1 == 'No Tumor' and class2 == 'No Tumor':
+        return "Both scans show no signs of tumor. Excellent stability."
+    else:
+        return f"Diagnosis changed from {class1} to {class2}. This requires careful radiologist review."
+
 def generate_gradcam(model, img_array, layer_name='conv5_block3_out'):
     try:
         grad_model = tf.keras.models.Model(
@@ -152,7 +170,7 @@ with st.sidebar:
     st.markdown("### About")
     st.info("NeuraSight uses deep learning to analyze brain MRI scans and detect tumor types with AI-powered explanations.")
     st.markdown("### Features")
-    features = ["4-Class Tumor Detection", "Grad-CAM Heatmap", "Confidence Scoring", "Severity Assessment", "Clinical Recommendations"]
+    features = ["4-Class Tumor Detection", "MRI Scan Comparison", "Grad-CAM Heatmap", "PDF Reports"]
     for f in features:
         st.markdown(f"✅ {f}")
     st.markdown("---")
@@ -160,32 +178,15 @@ with st.sidebar:
     st.markdown("**Architecture:** ResNet50")
     st.markdown("**Training Images:** 4,480")
     st.markdown("**Classes:** 4 tumor types")
-    st.markdown("**Framework:** TensorFlow/Keras")
     st.markdown("---")
     show_gradcam = st.toggle("Show Grad-CAM Heatmap", value=True)
-    st.markdown("---")
     st.caption("⚠️ For research use only. Not a medical device.")
 
 # Main header
 st.markdown('<h1 class="main-header">🧠 NeuraSight</h1>', unsafe_allow_html=True)
 st.markdown('<p class="sub-header">AI-Powered Brain Tumor Detection & Analysis System</p>', unsafe_allow_html=True)
 
-# Badges
-col1, col2, col3 = st.columns([1,2,1])
-with col2:
-    st.markdown("""
-    <div style="text-align:center">
-        <span class="feature-badge">🔬 ResNet50</span>
-        <span class="feature-badge">🎯 Grad-CAM</span>
-        <span class="feature-badge">📊 4-Class Detection</span>
-        <span class="feature-badge">📄 PDF Report</span>
-    </div>
-    """, unsafe_allow_html=True)
-
-st.markdown("---")
-
-# Upload section
-# Patient Details Form
+# Patient Details Form (Moved outside tabs so it's always visible)
 st.markdown("### 👤 Patient Information")
 col1, col2, col3 = st.columns(3)
 with col1:
@@ -196,145 +197,178 @@ with col3:
     doctor_name = st.text_input("Doctor Name", placeholder="Enter doctor name")
 
 st.markdown("---")
-uploaded_file = st.file_uploader(
-    "Drag and drop or click to upload",
-    type=["jpg", "jpeg", "png"],
-    help="Upload a brain MRI image in JPG or PNG format"
-)
 
-if uploaded_file is not None:
-    image = Image.open(uploaded_file).convert('RGB')
+# CREATE TABS HERE
+tab1, tab2 = st.tabs(["🔍 Single Detection", "⚖️ Compare Scans"])
 
-    img_resized = image.resize((224, 224))
-    img_array = np.array(img_resized) / 255.0
-    img_array = np.expand_dims(img_array, axis=0)
+# ==========================================
+# TAB 1: SINGLE DETECTION (Original Feature)
+# ==========================================
+with tab1:
+    uploaded_file = st.file_uploader(
+        "Upload a single brain MRI image to detect tumors",
+        type=["jpg", "jpeg", "png"],
+        key="single_upload"
+    )
 
-    with st.spinner("🔍 Analyzing MRI scan with AI..."):
-        predictions = model.predict(img_array)[0]
-        heatmap = generate_gradcam(model, img_array) if show_gradcam else None
+    if uploaded_file is not None:
+        image = Image.open(uploaded_file).convert('RGB')
+        img_resized = image.resize((224, 224))
+        img_array = np.array(img_resized) / 255.0
+        img_array = np.expand_dims(img_array, axis=0)
 
-    predicted_class = CLASS_NAMES[np.argmax(predictions)]
-    confidence = np.max(predictions) * 100
-    info = CLASS_INFO[predicted_class]
+        with st.spinner("🔍 Analyzing MRI scan with AI..."):
+            predictions = model.predict(img_array)[0]
+            heatmap = generate_gradcam(model, img_array) if show_gradcam else None
 
-    st.markdown("---")
-    st.markdown("## 📊 Analysis Results")
+        predicted_class = CLASS_NAMES[np.argmax(predictions)]
+        confidence = np.max(predictions) * 100
+        info = CLASS_INFO[predicted_class]
 
-    # Top metrics
-    m1, m2, m3, m4 = st.columns(4)
-    with m1:
-        st.metric("🎯 Detected", predicted_class)
-    with m2:
-        st.metric("📊 Confidence", f"{confidence:.1f}%")
-    with m3:
-        st.metric("⚠️ Severity", info['severity'])
-    with m4:
-        reliability = "High" if confidence >= 80 else "Medium" if confidence >= 60 else "Low"
-        st.metric("🔍 Reliability", reliability)
+        st.markdown("---")
+        st.markdown("## 📊 Analysis Results")
 
-    st.markdown("---")
+        m1, m2, m3, m4 = st.columns(4)
+        with m1:
+            st.metric("🎯 Detected", predicted_class)
+        with m2:
+            st.metric("📊 Confidence", f"{confidence:.1f}%")
+        with m3:
+            st.metric("⚠️ Severity", info['severity'])
+        with m4:
+            reliability = "High" if confidence >= 80 else "Medium" if confidence >= 60 else "Low"
+            st.metric("🔍 Reliability", reliability)
 
-    # Images side by side
-    if heatmap is not None:
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.markdown("**Original MRI Scan**")
-            st.image(image, use_container_width=True)
-        with col2:
-            st.markdown("**Grad-CAM Heatmap**")
-            overlay = overlay_gradcam(image, heatmap)
-            st.image(overlay, use_container_width=True)
-        with col3:
-            st.markdown("**Analysis Details**")
-            if predicted_class == 'No Tumor':
-                st.success(f"✅ {predicted_class}")
-            elif info['severity'] == 'High':
-                st.error(f"🚨 {predicted_class} Detected")
-            else:
-                st.warning(f"⚠️ {predicted_class} Detected")
+        st.markdown("---")
 
-            if confidence < 60:
-                st.error("🔴 Low Confidence - Consult radiologist")
-            elif confidence < 80:
-                st.warning("🟡 Medium Confidence")
-            else:
-                st.success("🟢 High Confidence")
+        if heatmap is not None:
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.markdown("**Original MRI Scan**")
+                st.image(image, use_container_width=True)
+            with col2:
+                st.markdown("**Grad-CAM Heatmap**")
+                overlay = overlay_gradcam(image, heatmap)
+                st.image(overlay, use_container_width=True)
+            with col3:
+                st.markdown("**Analysis Details**")
+                if predicted_class == 'No Tumor':
+                    st.success(f"✅ {predicted_class}")
+                elif info['severity'] == 'High':
+                    st.error(f"🚨 {predicted_class} Detected")
+                else:
+                    st.warning(f"⚠️ {predicted_class} Detected")
 
-            st.markdown(f"**About:** {info['desc']}")
-            st.markdown(f"**Action:** {info['action']}")
-            st.markdown(f"**Symptoms:** {info['symptoms']}")
-    else:
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("**Original MRI Scan**")
-            st.image(image, use_container_width=True)
-        with col2:
-            st.markdown("**Analysis Details**")
-            if predicted_class == 'No Tumor':
-                st.success(f"✅ {predicted_class}")
-            else:
-                st.error(f"⚠️ {predicted_class} Detected")
-            st.metric("Confidence", f"{confidence:.1f}%")
-            st.markdown(f"**About:** {info['desc']}")
-            st.markdown(f"**Recommended Action:** {info['action']}")
+                if confidence < 60:
+                    st.error("🔴 Low Confidence - Consult radiologist")
+                elif confidence < 80:
+                    st.warning("🟡 Medium Confidence")
+                else:
+                    st.success("🟢 High Confidence")
+                
+                st.markdown(f"**About:** {info['desc']}")
+                st.markdown(f"**Action:** {info['action']}")
+        else:
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("**Original MRI Scan**")
+                st.image(image, use_container_width=True)
+            with col2:
+                st.markdown("**Analysis Details**")
+                st.metric("Confidence", f"{confidence:.1f}%")
+                st.markdown(f"**About:** {info['desc']}")
 
-    st.markdown("---")
+        st.markdown("---")
+        st.markdown("### 📄 Download Report")
+        
+        if st.button("Generate PDF Report", type="primary"):
+            with st.spinner("Generating report..."):
+                import importlib
+                import report
+                importlib.reload(report)
+                from report import generate_pdf_report
+                heatmap_overlay = overlay_gradcam(image, heatmap) if heatmap is not None else None
+                
+                pdf_path = generate_pdf_report(
+                    image, predicted_class, confidence,
+                    predictions, CLASS_NAMES, heatmap_overlay,
+                    patient_name, patient_age, doctor_name
+                )
+                
+                with open(pdf_path, 'rb') as f:
+                    pdf_bytes = f.read()
+                st.download_button(
+                    label="Download PDF Report",
+                    data=pdf_bytes,
+                    file_name="NeuraSight_Report.pdf",
+                    mime="application/pdf"
+                )
+                st.success("Report generated!")
 
-    # Probability breakdown
-    st.markdown("### 📈 Probability Breakdown")
-    cols = st.columns(4)
-    for i, (class_name, col) in enumerate(zip(CLASS_NAMES, cols)):
-        prob = predictions[i] * 100
-        with col:
-            st.metric(class_name, f"{prob:.1f}%")
-            st.progress(int(prob))
-
-    st.markdown("---")
-    # PDF Report download
-    st.markdown("---")
-    st.markdown("### 📄 Download Report")
+# ==========================================
+# TAB 2: COMPARE SCANS (The New Feature!)
+# ==========================================
+with tab2:
+    st.markdown("### ⚖️ Compare Two MRI Scans")
+    st.info("Upload an older scan (Scan 1) and a recent scan (Scan 2) to see if the tumor has changed over time.")
     
-    if st.button("Generate PDF Report", type="primary"):
-        with st.spinner("Generating report..."):
-            import importlib
-            import report
-            importlib.reload(report)
-            from report import generate_pdf_report
-            heatmap_overlay = overlay_gradcam(image, heatmap) if heatmap is not None else None
+    comp_col1, comp_col2 = st.columns(2)
+    
+    with comp_col1:
+        scan1_file = st.file_uploader("Upload Scan 1 (Older)", type=["jpg", "jpeg", "png"], key="scan1")
+    with comp_col2:
+        scan2_file = st.file_uploader("Upload Scan 2 (Recent)", type=["jpg", "jpeg", "png"], key="scan2")
+        
+    if scan1_file and scan2_file:
+        # Load both images
+        img1 = Image.open(scan1_file).convert('RGB')
+        img2 = Image.open(scan2_file).convert('RGB')
+        
+        # Prepare both for AI
+        img_arr1 = np.expand_dims(np.array(img1.resize((224, 224))) / 255.0, axis=0)
+        img_arr2 = np.expand_dims(np.array(img2.resize((224, 224))) / 255.0, axis=0)
+        
+        with st.spinner("🔍 Comparing scans..."):
+            # Get AI Predictions
+            pred1 = model.predict(img_arr1)[0]
+            pred2 = model.predict(img_arr2)[0]
             
-            # Here is the fix: we added patient_name, patient_age, and doctor_name
-            pdf_path = generate_pdf_report(
-                image, predicted_class, confidence,
-                predictions, CLASS_NAMES, heatmap_overlay,
-                patient_name, patient_age, doctor_name
-            )
+            # Get Heatmaps
+            heat1 = generate_gradcam(model, img_arr1) if show_gradcam else None
+            heat2 = generate_gradcam(model, img_arr2) if show_gradcam else None
             
-            with open(pdf_path, 'rb') as f:
-                pdf_bytes = f.read()
-            st.download_button(
-                label="Download PDF Report",
-                data=pdf_bytes,
-                file_name="NeuraSight_Report.pdf",
-                mime="application/pdf"
-            )
-            st.success("Report generated!")
+        # Get final answers
+        class1 = CLASS_NAMES[np.argmax(pred1)]
+        conf1 = np.max(pred1) * 100
+        class2 = CLASS_NAMES[np.argmax(pred2)]
+        conf2 = np.max(pred2) * 100
+        
+        st.markdown("---")
+        
+        # Display side by side
+        res_col1, res_col2 = st.columns(2)
+        with res_col1:
+            st.markdown(f"### Scan 1: {class1} ({conf1:.1f}%)")
+            if heat1 is not None:
+                st.image(overlay_gradcam(img1, heat1), use_container_width=True)
+            else:
+                st.image(img1, use_container_width=True)
+                
+        with res_col2:
+            st.markdown(f"### Scan 2: {class2} ({conf2:.1f}%)")
+            if heat2 is not None:
+                st.image(overlay_gradcam(img2, heat2), use_container_width=True)
+            else:
+                st.image(img2, use_container_width=True)
 
-    # Disclaimer
-    st.markdown("""
-    <div class="disclaimer">
-    ⚠️ <strong>Medical Disclaimer:</strong> NeuraSight is an AI-powered research tool and is NOT a certified medical device.
-    Results should not be used as a substitute for professional medical diagnosis.
-    Always consult a qualified neurologist or radiologist for medical decisions.
-    </div>
-    """, unsafe_allow_html=True)
-
-else:
-    # Landing state
-    st.markdown("### 👆 Upload an MRI scan to begin analysis")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.info("🔬 **Step 1**\nUpload a brain MRI scan in JPG or PNG format")
-    with col2:
-        st.info("🤖 **Step 2**\nAI analyzes the scan using deep learning")
-    with col3:
-        st.info("📊 **Step 3**\nGet detailed results with heatmap visualization")
+        # Smart Summary Box
+        st.markdown("---")
+        st.markdown("### 📋 Comparison Summary")
+        summary_text = get_comparison_summary(class1, conf1, class2, conf2)
+        
+        if "positive response" in summary_text.lower() or "excellent" in summary_text.lower():
+            st.success(f"**AI Conclusion:** {summary_text}")
+        elif "requires careful" in summary_text.lower() or "new tumor" in summary_text.lower():
+            st.error(f"**AI Conclusion:** {summary_text}")
+        else:
+            st.info(f"**AI Conclusion:** {summary_text}")
