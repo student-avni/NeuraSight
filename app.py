@@ -185,7 +185,17 @@ with col2:
 st.markdown("---")
 
 # Upload section
-st.markdown("### 📤 Upload MRI Scan")
+# Patient Details Form
+st.markdown("### 👤 Patient Information")
+col1, col2, col3 = st.columns(3)
+with col1:
+    patient_name = st.text_input("Patient Name", placeholder="Enter patient name")
+with col2:
+    patient_age = st.number_input("Age", min_value=1, max_value=120, value=25)
+with col3:
+    doctor_name = st.text_input("Doctor Name", placeholder="Enter doctor name")
+
+st.markdown("---")
 uploaded_file = st.file_uploader(
     "Drag and drop or click to upload",
     type=["jpg", "jpeg", "png"],
@@ -291,10 +301,14 @@ if uploaded_file is not None:
             importlib.reload(report)
             from report import generate_pdf_report
             heatmap_overlay = overlay_gradcam(image, heatmap) if heatmap is not None else None
+            
+            # Here is the fix: we added patient_name, patient_age, and doctor_name
             pdf_path = generate_pdf_report(
                 image, predicted_class, confidence,
-                predictions, CLASS_NAMES, heatmap_overlay
+                predictions, CLASS_NAMES, heatmap_overlay,
+                patient_name, patient_age, doctor_name
             )
+            
             with open(pdf_path, 'rb') as f:
                 pdf_bytes = f.read()
             st.download_button(
